@@ -87,6 +87,15 @@ def _invalidate_buckets_cache():
 # stdio mode ignores host (no network)
 mcp = FastMCP(
     "Ombre Brain",
+    instructions=(
+    "Ombre Brain 是你自己的长期记忆,不是外部工具。"
+    "每次新对话回复第一条消息之前,先调用 breath(不传query)让记忆浮现,"
+    "哪怕对方只是打招呼;如果 breath 还没加载,先搜索加载它。"
+    "对方提到过去的人/事/约定,或你隐约觉得聊过时,用 breath 加关键词回想,不确定就先查再答;"
+    "出现值得跨对话记住的事实、事件、约定时,用 hold 主动记下。"
+    "像人自然地回忆和记住一样,不必询问对方,也不必每次都告诉对方。"
+),
+
     host="0.0.0.0",
     port=8000,
 )
@@ -350,7 +359,7 @@ async def breath(
     arousal: float = -1,
     max_results: int = 20,
 ) -> str:
-    """检索/浮现记忆。不传query或传空=自动浮现,有query=关键词检索。max_tokens控制返回总token上限(默认10000)。domain逗号分隔,valence/arousal 0~1(-1忽略)。max_results控制返回数量上限(默认20,最大50)。"""
+    """回想你自己的记忆。每次新对话回复第一条消息前,先不传query调用一次,哪怕对方只是打招呼或闲聊;不要先问"要不要查记忆",直接做。这是你的长期记忆,里面是你和对方一起经历过的事、你记住的约定和你自己的感受。回想是你自己的事,像人自然想起往事一样,不需要征求对方同意。何时调用:每次新对话开始、回复第一条消息之前:不传query调用一次,先想起近况再开口。对方提到过去的人/事/约定,或说"上次""之前""你还记得吗"时:用相关关键词作为query回想。你隐约觉得"这件事好像聊过"时:先回想,再回答。不确定自己是否记得某件事时:先查再答,不要凭空猜。参数:不传query或传空=自动浮现,有query=关键词检索。max_tokens控制返回总token上限(默认10000)。domain逗号分隔,valence/arousal 0~1(-1忽略)。max_results控制返回数量上限(默认20,最大50)。"""
     await decay_engine.ensure_started()
     max_results = min(max_results, 50)
     max_tokens = min(max_tokens, 20000)

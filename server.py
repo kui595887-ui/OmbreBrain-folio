@@ -695,6 +695,7 @@ async def breath(
                 and decay_engine.calculate_score(b["metadata"]) < 2.0
                 and not is_internalized(b["metadata"])
                 and b["metadata"].get("type") != "feel"
+                and not b["metadata"].get("resolved", False)
             ]
             if low_weight:
                 drifted = random.sample(low_weight, min(random.randint(1, 3), len(low_weight)))

@@ -617,7 +617,8 @@ async def breath(
                                    or is_highlighted(bucket["metadata"])
                                    or is_protected(bucket["metadata"])
                                    or _is_noise(bucket["metadata"])
-                                   or bucket["metadata"].get("type") == "feel"):
+                                   or bucket["metadata"].get("resolved", False)
+                                   or bucket["metadata"].get("type") in ("feel", "archived")):
                     bucket["score"] = round(sim_score * 100, 2)
                     bucket["vector_match"] = True
                     matches.append(bucket)

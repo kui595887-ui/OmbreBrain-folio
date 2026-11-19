@@ -11,9 +11,7 @@
 #
 # Emotion weight (continuous coordinate, not discrete labels):
 # 情感权重（基于连续坐标而非离散列举）：
-#   emotion_weight = base + (arousal × arousal_boost)
-#   Higher arousal → higher emotion weight → slower decay
-#   唤醒度越高 → 情感权重越大 → 记忆衰减越慢
+#   emotion_weight = base (情感维度已停用: arousal 不再影响权重, 衰减只看重要度/调用次数/时间)
 #
 # Depended on by: server.py
 # 被谁依赖：server.py
@@ -173,7 +171,8 @@ class DecayEngine:
             arousal = max(0.0, min(1.0, float(metadata.get("arousal", 0.3))))
         except (ValueError, TypeError):
             arousal = 0.3
-        emotion_weight = self.emotion_base + arousal * self.arousal_boost
+        # 情感维度已停用: arousal 不再参与权重(arousal_boost 配置保留但不生效)
+        emotion_weight = self.emotion_base
 
         # --- Time weight ---
         time_weight = self._calc_time_weight(days_since)
@@ -209,7 +208,7 @@ class DecayEngine:
             resolved_factor = self.resolved_factor
         else:
             resolved_factor = 1.0
-        urgency_boost = 1.5 if (arousal > 0.7 and not resolved) else 1.0
+        urgency_boost = 1.0  # 情感紧迫加成已停用
 
         # --- Highlight 加成: 标记重要的桶 score 上浮 highlight_boost_pct % ---
         highlight_mult = 1.0 + (self.highlight_boost_pct / 100.0) if is_highlighted(metadata) else 1.0

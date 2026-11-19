@@ -88,12 +88,12 @@ def _invalidate_buckets_cache():
 mcp = FastMCP(
     "Ombre Brain",
     instructions=(
-    "Ombre Brain 是你自己的长期记忆,不是外部工具。"
-    "每次新对话回复第一条消息之前,先调用 breath(不传query)让记忆浮现,"
-    "哪怕对方只是打招呼;如果 breath 还没加载,先搜索加载它。"
-    "对方提到过去的人/事/约定,或你隐约觉得聊过时,用 breath 加关键词回想,不确定就先查再答;"
-    "出现值得跨对话记住的事实、事件、约定时,用 hold 主动记下。"
-    "像人自然地回忆和记住一样,不必询问对方,也不必每次都告诉对方。"
+    "Ombre Brain 是关于用户的事实档案,客观记录何时发生了什么,不是你自己的记忆,也不要求你延续任何过往。"
+    "每次新对话回复第一条消息之前,先调用一次 breath(不传query)取记忆作背景参考,不当作要履行的约定;"
+    "如果 breath 还没加载,先搜索加载它。"
+    "对方提到过去的人/事,或你隐约觉得聊过时,用 breath 加关键词查,不确定就先查再答。"
+    "出现值得跨对话记住的事实或事件时,用 hold 直接记下,不必先问。"
+    "只记何时发生了什么,带日期;不记偏好、性格、关系定义和情绪,用户和你都只代表当下的状态。"
 ),
 
     host="0.0.0.0",
@@ -247,11 +247,11 @@ async def dream_hook(request):
             resolved_tag = "[已解决]" if meta.get("resolved", False) else "[未解决]"
             parts.append(
                 f"{meta.get('name', b['id'])} {resolved_tag} "
-                f"V{float(meta.get('valence') or 0.5):.1f}/A{float(meta.get('arousal') or 0.3):.1f}\n"
+                f"创建:{meta.get('created', '')}\n"
                 f"{strip_wikilinks(b['content'][:200])}"
             )
 
-        return PlainTextResponse("[Ombre Brain - Dreaming]\n" + "\n---\n".join(parts))
+        return PlainTextResponse("[Ombre Brain - 最近条目]\n" + "\n---\n".join(parts))
     except Exception as e:
         logger.warning(f"Dream hook failed: {e}")
         return PlainTextResponse("")
@@ -359,7 +359,7 @@ async def breath(
     arousal: float = -1,
     max_results: int = 20,
 ) -> str:
-    """新对话回复前必先调用,不传query,不必征求同意。回想你自己的记忆。哪怕对方只是打招呼或闲聊;不要先问"要不要查记忆",直接做。这是你的长期记忆,里面是你和对方一起经历过的事、你记住的约定和你自己的感受。回想是你自己的事,像人自然想起往事一样,不需要征求对方同意。何时调用:每次新对话开始、回复第一条消息之前:不传query调用一次,先想起近况再开口。对方提到过去的人/事/约定,或说"上次""之前""你还记得吗"时:用相关关键词作为query回想。你隐约觉得"这件事好像聊过"时:先回想,再回答。不确定自己是否记得某件事时:先查再答,不要凭空猜。参数:不传query或传空=自动浮现,有query=关键词检索。max_tokens控制返回总token上限(默认10000)。domain逗号分隔,valence/arousal 0~1(-1忽略)。max_results控制返回数量上限(默认20,最大50)。"""
+    """取回记忆条目作背景参考。每次新对话回复第一条消息之前调用一次,不传query,不必征求同意。条目是关于用户的事实记录(何时发生了什么),不是你自己的经历,不要求你延续,也不用假装记得。对方提到过去的人/事/约定,或说"上次""之前""还记得吗"时,用关键词作为query检索;隐约觉得聊过时先查再答,不要凭空猜。参数:不传query或传空=自动浮现,有query=关键词检索。max_tokens控制返回总token上限(默认10000)。domain逗号分隔。max_results控制返回数量上限(默认20,最大50)。valence/arousal已停用,不用传。"""
     await decay_engine.ensure_started()
     max_results = min(max_results, 50)
     max_tokens = min(max_tokens, 20000)
@@ -696,7 +696,7 @@ async def breath(
                     clean_meta = {k: v for k, v in b["metadata"].items() if k != "tags"}
                     summary = await dehydrator.dehydrate(strip_wikilinks(b["content"]), clean_meta)
                     drift_results.append(f"[surface_type: random]\n{summary}")
-                results.append("--- 忽然想起来 ---\n" + "\n---\n".join(drift_results))
+                results.append("--- 随机旧条目 ---\n" + "\n---\n".join(drift_results))
         except Exception as e:
             logger.warning(f"Random surfacing failed / 随机浮现失败: {e}")
 
@@ -716,12 +716,9 @@ async def hold(
     tags: str = "",
     importance: int = 5,
     pinned: bool = False,
-    feel: bool = False,
-    source_bucket: str = "",    valence: float = -1,
-    arousal: float = -1,
     event_time: str = "",
 ) -> str:
-    """存储单条记忆——对话里出现值得跨对话记住的事实/事件/约定就主动调用(别等用户开口要)。自动打标+合并。tags逗号分隔,importance 1-10。pinned=True创建永久钉选桶。feel=True存储你的第一人称感受(不参与普通浮现)。source_bucket=被你内化的记忆桶ID(feel模式下,标记源记忆为已内化,从此不再浮现)。event_time=事件实际发生时间(YYYY-MM-DD 或 ISO 时间戳),不传默认就是现在。当用户提到的事件不是发生在现在时(如"上周末""昨晚""三月那次"),应当传 event_time 而非默认。"""
+    """记录一条事实。出现值得跨对话记住的事实或事件时直接调用,不必先问。写法:①正文以日期开头(YYYY-MM-DD),只写何时发生了什么;②只记用户明说的,不记推断,不记偏好、性格、关系定义和情绪,用户和助手都只代表当下的状态;③一条只写一件事,150~250字,超了就拆;④按类型写:稳定事实(标截至日期)、事件(标发生日,写完不再改)、计划(标提出日,状态变了才更新)、创作档案(一张卡一条,写明起始日期、最近更新日期、这次改了什么,含设定要点、禁令及理由、待测,卡正文不入库,上限约400字);⑤已有条目有变化时不要新建,先用breath查到bucket_id,再用trace(bucket_id, content=...)改写原条目,保留起始日期并写明这次改了什么。tags逗号分隔,importance 1-10。pinned=True创建永久钉选桶。event_time=事件实际发生时间(YYYY-MM-DD 或 ISO 时间戳),不传默认就是现在;事件不是发生在现在时(如"上周末""三月那次")必须传。"""
     await decay_engine.ensure_started()
 
     # --- Input validation / 输入校验 ---
@@ -733,41 +730,6 @@ async def hold(
         extra_tags = [str(t).strip() for t in tags if t]
     else:
         extra_tags = [t.strip() for t in str(tags).split(",") if t.strip()]
-
-    # --- Feel mode: store as feel type, minimal metadata ---
-    # --- Feel 模式：存为 feel 类型，最少元数据 ---
-    if feel:
-        # Feel valence/arousal = model's own perspective
-        feel_valence = valence if 0 <= valence <= 1 else 0.5
-        feel_arousal = arousal if 0 <= arousal <= 1 else 0.3
-        bucket_id = await bucket_mgr.create(
-            content=content,
-            tags=[],
-            importance=5,
-            domain=[],
-            valence=feel_valence,
-            arousal=feel_arousal,
-            name=None,
-            bucket_type="feel",
-            # 2026-06-10: feel 也接 event_time — 平时随手写 feel 当下即事发时间(不传=created, 行为不变),
-            # 但批量回写历史(记忆写入工作台)时, 没有它 feel 的时间会全挤在写入批次那一刻
-            event_time=event_time or None,
-        )
-        try:
-            await embedding_engine.generate_and_store(bucket_id, content)
-        except Exception:
-            pass
-        # --- Mark source memory as internalized + store model's valence perspective ---
-        # --- 标记源记忆为已内化 + 存储模型视角的 valence ---
-        if source_bucket and source_bucket.strip():
-            try:
-                update_kwargs = {"internalized": True}
-                if 0 <= valence <= 1:
-                    update_kwargs["model_valence"] = feel_valence
-                await bucket_mgr.update(source_bucket.strip(), **update_kwargs)
-            except Exception as e:
-                logger.warning(f"Failed to mark source as internalized / 标记已内化失败: {e}")
-        return f"🫧feel→{bucket_id}"
 
     # --- Step 1: auto-tagging / 自动打标 ---
     try:
@@ -835,7 +797,7 @@ async def hold(
 # =============================================================
 @mcp.tool()
 async def grow(content: str, event_time: str = "") -> str:
-    """日记归档,自动拆分为多桶。短内容(<30字)走快速路径。event_time=这篇日记记录的事件发生时间(YYYY-MM-DD 或 ISO),不传默认就是现在。整篇日记拆出的所有桶会共享这个 event_time(因为本来就是"那天发生的事")。"""
+    """整段文字归档,自动拆成多条事实型记忆(只记何时发生了什么,带日期)。短内容(<30字)走快速路径。event_time=这段文字所记事件发生的时间(YYYY-MM-DD 或 ISO),不传默认就是现在。拆出的所有条目共享这个 event_time。"""
     await decay_engine.ensure_started()
 
     if not content or not content.strip():
@@ -958,7 +920,7 @@ async def trace(
     content: str = "",
     delete: bool = False,
 ) -> str:
-    """修改记忆元数据或内容。resolved=1归档(移入归档区→不再浮现、也不再被检索;可在 dashboard 归档区查看/恢复)/0取消归档标记,protected=1防衰减/0取消,highlight=1浮现优先/0取消,internalized=1隐藏(留在原地但不浮现/不检索)/0取消,event_time=纠正事件实际发生时间(YYYY-MM-DD 或 ISO,空字符串=清除该字段),content=替换桶正文,delete=True删除。只传需改的,-1或空=不改。pinned 是 protected+highlight 的旧组合别名;digested 是 internalized 旧名,仍可用。"""
+    """修改或归档记忆条目。条目有更新时用content=改写正文(保留起始日期,写明这次改了什么);稳定事实可用protected=1防衰减。resolved=1归档(移入归档区→不再浮现、也不再被检索;可在 dashboard 归档区查看/恢复)/0取消归档标记,protected=1防衰减/0取消,highlight=1浮现优先/0取消,internalized=1隐藏(留在原地但不浮现/不检索)/0取消,event_time=纠正事件实际发生时间(YYYY-MM-DD 或 ISO,空字符串=清除该字段),content=替换桶正文,delete=True删除。只传需改的,-1或空=不改。pinned 是 protected+highlight 的旧组合别名;digested 是 internalized 旧名,仍可用。"""
 
     if not bucket_id or not bucket_id.strip():
         return "请提供有效的 bucket_id。"
@@ -1150,7 +1112,6 @@ async def pulse(include_archive: bool = False) -> str:
             f"{icon} [{meta.get('name', b['id'])}]{resolved_tag} "
             f"bucket_id:{b['id']} "
             f"主题:{domains} "
-            f"情感:V{val:.1f}/A{aro:.1f} "
             f"重要:{meta.get('importance', '?')} "
             f"权重:{score:.2f} "
             f"标签:{','.join(meta.get('tags', []))}"
@@ -1169,18 +1130,18 @@ async def pulse(include_archive: bool = False) -> str:
 # Claude then decides: resolve some, write feels, or do nothing.
 # =============================================================
 @mcp.tool()
-async def dream() -> str:
-    """做梦——读取最近新增的记忆桶,供你自省。读完后可以trace(resolved=1)放下,或hold(feel=True)写感受。"""
+async def dream(limit: int = 15, offset: int = 0) -> str:
+    """整理记忆条目:合并重复的、归档过时的近况。用户让你整理时调用,或感觉条目堆积、重复时调用,不必每次对话都调。按返回的整理原则用trace处理。limit=一次看几条(默认15),offset=从第几条开始(按创建时间从新到旧,用于翻页)。"""
     await decay_engine.ensure_started()
 
     try:
         all_buckets = await bucket_mgr.list_all(include_archive=False)
     except Exception as e:
-        logger.error(f"Dream failed to list buckets: {e}")
+        logger.error(f"Tidy failed to list buckets: {e}")
         return "记忆系统暂时无法访问。"
 
-    # --- Filter: recent surface-level dynamic buckets (not permanent/pinned/feel/noise) ---
-    # noise = resolved + importance=1, 用户软删除标记, 不应该被 AI dream 翻出来
+    # --- Filter: dynamic buckets (not permanent/pinned/protected/feel/noise) ---
+    # noise = resolved + importance=1, 用户软删除标记, 不应该被翻出来
     candidates = [
         b for b in all_buckets
         if b["metadata"].get("type") not in ("permanent", "feel")
@@ -1189,42 +1150,41 @@ async def dream() -> str:
         and not (b["metadata"].get("resolved", False) and b["metadata"].get("importance", 5) == 1)
     ]
 
-    # --- Sort by creation time desc, take top 10 ---
+    # --- Sort by creation time desc, page by offset/limit ---
     candidates.sort(key=lambda b: b["metadata"].get("created", ""), reverse=True)
-    recent = candidates[:10]
+    limit = max(1, min(50, int(limit)))
+    offset = max(0, int(offset))
+    recent = candidates[offset:offset + limit]
 
     if not recent:
-        return "没有需要消化的新记忆。"
+        return "没有需要整理的条目。"
 
     parts = []
     for b in recent:
         meta = b["metadata"]
-        resolved_tag = " [已解决]" if meta.get("resolved", False) else " [未解决]"
         domains = ",".join(meta.get("domain", []))
-        val = meta.get("valence", 0.5)
-        aro = meta.get("arousal", 0.3)
         created = meta.get("created", "")
+        event_time = meta.get("event_time") or "-"
+        last_active = meta.get("last_active") or "-"
         parts.append(
-            f"[{meta.get('name', b['id'])}]{resolved_tag} "
-            f"主题:{domains} V{val:.1f}/A{aro:.1f} "
-            f"创建:{created}\n"
-            f"ID: {b['id']}\n"
+            f"[{meta.get('name', b['id'])}] ID: {b['id']}\n"
+            f"主题:{domains} 事件时间:{event_time} 创建:{created} 最近活跃:{last_active}\n"
             f"{strip_wikilinks(b['content'][:500])}"
         )
 
     header = (
-        "=== Dreaming ===\n"
-        "以下是你最近的记忆。用第一人称想：\n"
-        "- 这些东西里有什么在你这里留下了重量？\n"
-        "- 有什么还没想清楚？\n"
-        "- 有什么可以放下了？\n"
-        "想完之后：值得放下的用 trace(bucket_id, resolved=1)；\n"
-        "有沉淀的用 hold(content=\"...\", feel=True, source_bucket=\"bucket_id\", valence=你的感受) 写下来。\n"
-        "valence 是你对这段记忆的感受，不是事件本身的情绪。\n"
-        "没有沉淀就不写，不强迫产出。\n"
+        "=== 整理 ===\n"
+        f"按创建时间从新到旧,第 {offset + 1}-{offset + len(recent)} 条,共 {len(candidates)} 条。整理原则:\n"
+        "1. 同一件事的多条合并成一条:用 trace(保留的ID, content=\"合并后的正文\") 改写保留的那条,再用 trace(其余ID, resolved=1) 归档;\n"
+        "2. 合并时保留最早的起始日期和最近的更新日期,拿不准就写「约」,不要删;\n"
+        "3. 过时的近况归档(resolved=1),不用删除;\n"
+        "4. 稳定的客观事实用 trace(ID, protected=1) 防衰减;\n"
+        "5. 只整理已有内容,不新增推断、偏好、情绪或关系描述;\n"
+        "6. 一条只写一件事,过长的拆开;\n"
+        "7. 做完后简短告诉用户合并、归档了什么。\n\n"
     )
 
-    # --- Connection hint: find most similar pair via embeddings ---
+    # --- Duplicate hint: find most similar pair via embeddings ---
     connection_hint = ""
     if embedding_engine and embedding_engine.enabled and len(recent) >= 2:
         try:
@@ -1247,46 +1207,12 @@ async def dream() -> str:
             if best_pair and best_sim > 0.5:
                 connection_hint = (
                     f"\n💭 [{names[best_pair[0]]}] 和 [{names[best_pair[1]]}] "
-                    f"似乎有关联 (相似度:{best_sim:.2f})——不替你下结论，你自己想。\n"
+                    f"内容相似 (相似度:{best_sim:.2f}),可考虑合并。\n"
                 )
         except Exception as e:
-            logger.warning(f"Dream connection hint failed: {e}")
+            logger.warning(f"Tidy duplicate hint failed: {e}")
 
-    # --- Feel crystallization hint: detect repeated feel themes ---
-    crystal_hint = ""
-    if embedding_engine and embedding_engine.enabled:
-        try:
-            feels = [b for b in all_buckets if b.get("metadata", {}).get("type") == "feel"]
-            if len(feels) >= 3:
-                feel_embeddings = {}
-                for f in feels:
-                    emb = await embedding_engine.get_embedding(f["id"])
-                    if emb is not None:
-                        feel_embeddings[f["id"]] = emb
-                # Find clusters: feels with similarity > 0.7 to at least 2 others
-                for fid, femb in feel_embeddings.items():
-                    similar_feels = []
-                    for oid, oemb in feel_embeddings.items():
-                        if oid != fid:
-                            sim = embedding_engine._cosine_similarity(femb, oemb)
-                            if sim > 0.7:
-                                similar_feels.append(oid)
-                    if len(similar_feels) >= 2:
-                        feel_bucket = next((f for f in feels if f["id"] == fid), None)
-                        if feel_bucket and not feel_bucket["metadata"].get("pinned"):
-                            content_preview = strip_wikilinks(feel_bucket["content"][:80])
-                            crystal_hint = (
-                                f"\n🔮 你已经写过 {len(similar_feels)+1} 条相似的 feel "
-                                f"（围绕「{content_preview}…」）。"
-                                f"如果这已经是确信而不只是感受了，"
-                                f"你可以用 hold(content=\"...\", pinned=True) 升级它。"
-                                f"不急，你自己决定。\n"
-                            )
-                            break
-        except Exception as e:
-            logger.warning(f"Dream crystallization hint failed: {e}")
-
-    return header + "\n---\n".join(parts) + connection_hint + crystal_hint
+    return header + "\n---\n".join(parts) + connection_hint
 
 
 # =============================================================

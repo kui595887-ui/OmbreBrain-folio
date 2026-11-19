@@ -1336,6 +1336,8 @@ class BucketManager:
         scored = []
         for bucket in candidates:
             meta = bucket.get("metadata", {})
+            if meta.get("resolved", False):
+                continue
             # 钉选/永久参考桶 (protected 或 highlight): 开窗时已在核心准则/永久参考区读取,
             # 自动注入里只认 title 强命中, 不靠模糊/正文/情感/语义命中占记忆位。
             # (前端"钉选"= protected OR highlight, server.py:1697; 精准按桶名搜仍可达)

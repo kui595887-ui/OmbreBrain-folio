@@ -502,7 +502,7 @@ class Dehydrator:
 
         # --- Content is short enough, no compression needed ---
         # --- 内容已经很短，不需要压缩 ---
-        if count_tokens_approx(content) < 100:
+        if count_tokens_approx(content) < 400:
             return self._format_output(content, metadata)
 
         # --- Check cache first ---
